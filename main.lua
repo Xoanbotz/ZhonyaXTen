@@ -1,8 +1,7 @@
 --[[
 =========================================================
-  CP EXPLOIT - FULL EDITION
-  Merge: CP Teleport 1-25 + Movement + Manual + Bubble
-  Author: Kyriel (for ADIEL)
+  CP EXPLOIT - AUTO REFRESH
+  CP baru muncul otomatis pas lo unlock
 =========================================================
 ]]
 
@@ -12,7 +11,6 @@ local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local LP = Players.LocalPlayer
 local PlayerGui = LP:WaitForChild("PlayerGui")
 
@@ -25,13 +23,12 @@ local flyConn = nil
 local bodyVel = nil
 local flySpeed = 50
 
+local knownCPs = {}     -- CP yang udah ke-scan: [num] = {name, part}
+local cpButtons = {}    -- Tombol yang udah dibuat: [num] = button
+
 -- ============================================================
 -- HELPER
 -- ============================================================
-local function getChar()
-    return LP.Character or LP.Character:WaitForChild("Humanoid")
-end
-
 local function getHRP()
     return LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 end
@@ -41,64 +38,70 @@ local function getHum()
 end
 
 -- ============================================================
--- CARI CP (multi-lokasi, multi-nama)
+-- SCAN CP (REKURSIF, MULTI FORMAT)
 -- ============================================================
-local function findCP(num)
-    local names = {"CP" .. num, "CP_" .. num, "CP0" .. num}
-    local folders = {
-        Workspace:FindFirstChild("Checkpoints"),
-        Workspace,
-    }
+local function scanAllCPs()
+    local found = {}
     
-    for _, folder in ipairs(folders) do
-        if folder then
-            for _, name in ipairs(names) do
-                local obj = folder:FindFirstChild(name)
-                if obj then
-                    local part = obj:FindFirstChild("Part") 
-                        or obj:FindFirstChildWhichIsA("BasePart", true)
-                    if part then
-                        return {
-                            name = name,
-                            model = obj,
-                            part = part,
-                            fullName = obj:GetFullName(),
-                        }
-                    end
+    local function scanContainer(container)
+        if not container then return end
+        for _, obj in ipairs(container:GetChildren()) do
+            -- Match CP1, CP_1, CP01, CP 1
+            local nameUpper = string.upper(obj.Name)
+            local numMatch = nameUpper:match("CP[%s_]*0*(%d+)")
+            
+            if numMatch then
+                local num = tonumber(numMatch)
+                local part = obj:FindFirstChildWhichIsA("BasePart", true)
+                
+                if part then
+                    found[num] = {
+                        name = obj.Name,
+                        model = obj,
+                        part = part,
+                    }
                 end
             end
         end
     end
-    return nil
+    
+    -- Cek folder Checkpoints
+    local cpFolder = Workspace:FindFirstChild("Checkpoints")
+    if cpFolder then
+        scanContainer(cpFolder)
+    end
+    
+    -- Cek juga di Workspace langsung (kalo ada CP yang di root)
+    scanContainer(Workspace)
+    
+    return found
 end
 
 -- ============================================================
--- TELEPORT + TRIGGER TOUCH
+-- TELEPORT
 -- ============================================================
-local function tpToCP(cp, trigger)
+local function tpToCP(cp)
     local char = LP.Character
     if not char then return false end
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp or not cp.part then return false end
+    if not hrp or not cp.part or not cp.part.Parent then return false end
     
     hrp.CFrame = CFrame.new(cp.part.Position + Vector3.new(0, 5, 0))
     hrp.Velocity = Vector3.zero
     
-    if trigger ~= false then
-        task.wait(0.2)
-        pcall(function()
-            firetouchinterest(hrp, cp.part, 0)
-            task.wait(0.1)
-            firetouchinterest(hrp, cp.part, 1)
-        end)
-    end
+    task.wait(0.2)
+    pcall(function()
+        firetouchinterest(hrp, cp.part, 0)
+        task.wait(0.1)
+        firetouchinterest(hrp, cp.part, 1)
+    end)
     
     print("[TP] " .. cp.name)
     return true
 end
 
 -- ============================================================
--- NOCLIP
+-- NOCLIP / FLY
 -- ============================================================
 local function setNoclip(state)
     if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
@@ -121,9 +124,6 @@ local function setNoclip(state)
     end
 end
 
--- ============================================================
--- FLY
--- ============================================================
 local function setFly(state)
     if flyConn then
         flyConn:Disconnect()
@@ -132,7 +132,6 @@ local function setFly(state)
         flyConn = nil
     end
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
-    
     if not state then return end
     
     local hrp = getHRP()
@@ -182,14 +181,12 @@ end
 local Window = Rayfield:CreateWindow({
     Name = "CP Exploit",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "by ADIEL",
+    LoadingSubtitle = "Auto Refresh",
     ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
 
--- ============================================================
--- RESIZE WINDOW (KECILIN)
--- ============================================================
+-- Resize window
 task.delay(0.2, function()
     local gui = PlayerGui:FindFirstChild("Rayfield")
         or game:GetService("CoreGui"):FindFirstChild("Rayfield")
@@ -205,60 +202,101 @@ task.delay(0.2, function()
 end)
 
 -- ============================================================
--- TAB 1: TELEPORT CP 1-25
+-- TAB TELEPORT (AUTO REFRESH)
 -- ============================================================
 local TabTP = Window:CreateTab("Teleport", 4483362458)
-TabTP:CreateSection("Checkpoint 1 - 25")
 
-local totalFound = 0
-local totalMissing = 0
-local missingList = {}
+-- Label status
+local statusLabel = TabTP:CreateLabel("Scanning...")
 
-for i = 1, 25 do
-    local cp = findCP(i)
-    
-    if cp then
-        totalFound = totalFound + 1
-        TabTP:CreateButton({
-            Name = "-> " .. cp.name,
-            Callback = function()
-                if tpToCP(cp) then
-                    Rayfield:Notify({
-                        Title = "Teleport",
-                        Content = cp.name .. " triggered",
-                        Duration = 2,
-                    })
-                else
-                    Rayfield:Notify({
-                        Title = "Error",
-                        Content = "Gagal TP ke " .. cp.name,
-                        Duration = 2,
-                    })
-                end
-            end,
-        })
-    else
-        totalMissing = totalMissing + 1
-        table.insert(missingList, "CP" .. i)
-        TabTP:CreateButton({
-            Name = "-> CP" .. i .. " [NOT FOUND]",
-            Callback = function()
-                Rayfield:Notify({
-                    Title = "Not Found",
-                    Content = "CP" .. i .. " gak ada",
-                    Duration = 2,
-                })
-            end,
-        })
-    end
-end
+-- Container buat tombol CP (biar bisa update)
+local cpSection = TabTP:CreateSection("Checkpoints")
 
 -- ============================================================
--- TAB 2: MOVEMENT
+-- FUNGSI UPDATE BUTTONS
+-- ============================================================
+local function updateCPButtons()
+    local currentCPs = scanAllCPs()
+    
+    -- Hapus tombol yang CP-nya udah gak ada (kalo ada)
+    for num, btn in pairs(cpButtons) do
+        if not currentCPs[num] then
+            -- Skip, jarang CP ilang
+        end
+    end
+    
+    -- Tambah tombol baru buat CP yang belum ada tombolnya
+    for num, cp in pairs(currentCPs) do
+        if not knownCPs[num] then
+            knownCPs[num] = cp
+            print("[NEW] CP" .. num .. " muncul: " .. cp.name)
+            
+            local newBtn = TabTP:CreateButton({
+                Name = "-> " .. cp.name,
+                Callback = function()
+                    local latest = knownCPs[num]
+                    if latest and tpToCP(latest) then
+                        Rayfield:Notify({
+                            Title = "Teleport",
+                            Content = latest.name .. " triggered",
+                            Duration = 2,
+                        })
+                    else
+                        Rayfield:Notify({
+                            Title = "Error",
+                            Content = "CP" .. num .. " udah gak ada",
+                            Duration = 2,
+                        })
+                    end
+                end,
+            })
+            cpButtons[num] = newBtn
+        end
+    end
+    
+    -- Update status
+    local count = 0
+    for _ in pairs(knownCPs) do count = count + 1 end
+    pcall(function()
+        statusLabel:Set("Detected: " .. count .. " CP")
+    end)
+    
+    return count
+end
+
+-- Initial scan
+updateCPButtons()
+
+-- ============================================================
+-- AUTO REFRESH LOOP
+-- ============================================================
+task.spawn(function()
+    while task.wait(2) do
+        pcall(function()
+            local before = 0
+            for _ in pairs(knownCPs) do before = before + 1 end
+            
+            updateCPButtons()
+            
+            local after = 0
+            for _ in pairs(knownCPs) do after = after + 1 end
+            
+            if after > before then
+                Rayfield:Notify({
+                    Title = "CP Baru Terdeteksi",
+                    Content = "Total: " .. after .. " CP",
+                    Duration = 3,
+                })
+            end
+        end)
+    end
+end)
+
+-- ============================================================
+-- TAB MOVEMENT
 -- ============================================================
 local TabMove = Window:CreateTab("Movement", 4483362458)
 
-TabMove:CreateSection("Speed")
 TabMove:CreateSlider({
     Name = "Walk Speed",
     Range = {16, 500},
@@ -279,14 +317,12 @@ TabMove:CreateSlider({
     Flag = "JumpPower",
     Callback = function(v)
         local h = getHum()
-        if h then 
+        if h then
             h.JumpPower = v
             h.UseJumpPower = true
         end
     end,
 })
-
-TabMove:CreateSection("Exploits")
 
 TabMove:CreateToggle({
     Name = "Auto Jump",
@@ -309,18 +345,14 @@ TabMove:CreateToggle({
     Name = "Noclip",
     CurrentValue = false,
     Flag = "Noclip",
-    Callback = function(v)
-        setNoclip(v)
-    end,
+    Callback = function(v) setNoclip(v) end,
 })
 
 TabMove:CreateToggle({
     Name = "Fly",
     CurrentValue = false,
     Flag = "Fly",
-    Callback = function(v)
-        setFly(v)
-    end,
+    Callback = function(v) setFly(v) end,
 })
 
 TabMove:CreateSlider({
@@ -329,22 +361,18 @@ TabMove:CreateSlider({
     Increment = 1,
     CurrentValue = 50,
     Flag = "FlySpeed",
-    Callback = function(v)
-        flySpeed = v
-    end,
+    Callback = function(v) flySpeed = v end,
 })
 
 -- ============================================================
--- TAB 3: MANUAL
+-- TAB MANUAL
 -- ============================================================
 local TabManual = Window:CreateTab("Manual", 4483362458)
-TabManual:CreateSection("Koordinat Manual")
 
 local xInput = TabManual:CreateInput({
     Name = "X",
     PlaceholderText = "0",
     RemoveTextAfterFocusLost = false,
-    Flag = "InputX",
     Callback = function() end,
 })
 
@@ -352,7 +380,6 @@ local yInput = TabManual:CreateInput({
     Name = "Y",
     PlaceholderText = "100",
     RemoveTextAfterFocusLost = false,
-    Flag = "InputY",
     Callback = function() end,
 })
 
@@ -360,12 +387,11 @@ local zInput = TabManual:CreateInput({
     Name = "Z",
     PlaceholderText = "0",
     RemoveTextAfterFocusLost = false,
-    Flag = "InputZ",
     Callback = function() end,
 })
 
 TabManual:CreateButton({
-    Name = "Teleport ke X, Y, Z",
+    Name = "TP ke X, Y, Z",
     Callback = function()
         local hrp = getHRP()
         if not hrp then return end
@@ -381,92 +407,26 @@ TabManual:CreateButton({
     end,
 })
 
-TabManual:CreateButton({
-    Name = "Simpan Posisi Sekarang",
-    Callback = function()
-        local hrp = getHRP()
-        if not hrp then return end
-        local p = hrp.Position
-        Rayfield:Notify({
-            Title = "Posisi Disimpan",
-            Content = string.format("X: %.0f, Y: %.0f, Z: %.0f", p.X, p.Y, p.Z),
-            Duration = 3,
-        })
-    end,
-})
-
-TabManual:CreateSection("Trigger CP by Name")
-
-local cpNameInput = TabManual:CreateInput({
-    Name = "Nama CP",
-    PlaceholderText = "CP10",
-    RemoveTextAfterFocusLost = false,
-    Flag = "InputCPName",
-    Callback = function() end,
-})
-
-TabManual:CreateButton({
-    Name = "Trigger CP by Name",
-    Callback = function()
-        local num = tonumber(cpNameInput:match("(%d+)"))
-        if not num then
-            Rayfield:Notify({
-                Title = "Error",
-                Content = "Format salah. Contoh: CP10",
-                Duration = 2,
-            })
-            return
-        end
-        local cp = findCP(num)
-        if cp then
-            if tpToCP(cp) then
-                Rayfield:Notify({
-                    Title = "Success",
-                    Content = cp.name .. " triggered",
-                    Duration = 2,
-                })
-            end
-        else
-            Rayfield:Notify({
-                Title = "Not Found",
-                Content = "CP" .. num .. " gak ada",
-                Duration = 2,
-            })
-        end
-    end,
-})
-
 -- ============================================================
--- TAB 4: INFO
+-- TAB INFO
 -- ============================================================
 local TabInfo = Window:CreateTab("Info", 4483362458)
-TabInfo:CreateSection("Player")
 
 TabInfo:CreateLabel("Place ID: " .. tostring(game.PlaceId))
 TabInfo:CreateLabel("Character: " .. (LP.Character and LP.Character.Name or "Not loaded"))
+TabInfo:CreateLabel("Scanner: Auto-refresh 2s")
 
 TabInfo:CreateButton({
-    Name = "Tampilkan Posisi",
+    Name = "Refresh Scan Sekarang",
     Callback = function()
-        local hrp = getHRP()
-        if hrp then
-            local p = hrp.Position
-            Rayfield:Notify({
-                Title = "Posisi",
-                Content = string.format("%.1f, %.1f, %.1f", p.X, p.Y, p.Z),
-                Duration = 5,
-            })
-        end
+        local count = updateCPButtons()
+        Rayfield:Notify({
+            Title = "Refresh",
+            Content = count .. " CP terdeteksi",
+            Duration = 2,
+        })
     end,
 })
-
-TabInfo:CreateSection("Checkpoint Status")
-TabInfo:CreateLabel("Ditemukan: " .. totalFound .. " CP")
-TabInfo:CreateLabel("Missing: " .. totalMissing .. " CP")
-
-if #missingList > 0 then
-    TabInfo:CreateLabel("Missing: " .. table.concat(missingList, ", "))
-end
 
 -- ============================================================
 -- FLOATING BUBBLE
@@ -502,7 +462,6 @@ bs.Color = Color3.fromRGB(220, 100, 255)
 bs.Thickness = 2
 bs.Parent = Bubble
 
--- Draggable bubble
 local dragging, dragStart, startPos = false, nil, nil
 Bubble.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -533,7 +492,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Toggle window
 local rayfieldVisible = true
 
 local function setRayfieldVisible(visible)
@@ -559,7 +517,6 @@ Bubble.MouseButton1Click:Connect(function()
     Bubble.Visible = not rayfieldVisible
 end)
 
--- Auto-detect close Rayfield
 task.spawn(function()
     while task.wait(0.5) do
         local gui = PlayerGui:FindFirstChild("Rayfield")
@@ -576,14 +533,8 @@ task.spawn(function()
                     end
                 end
             end
-            
-            if anyVisible then
-                Bubble.Visible = false
-                rayfieldVisible = true
-            else
-                Bubble.Visible = true
-                rayfieldVisible = false
-            end
+            Bubble.Visible = not anyVisible
+            rayfieldVisible = anyVisible
         end
     end
 end)
@@ -591,8 +542,11 @@ end)
 -- ============================================================
 -- NOTIF
 -- ============================================================
+local initCount = 0
+for _ in pairs(knownCPs) do initCount = initCount + 1 end
+
 Rayfield:Notify({
     Title = "CP Exploit",
-    Content = totalFound .. " CP ditemukan, " .. totalMissing .. " missing",
+    Content = initCount .. " CP terdeteksi. Auto-refresh aktif.",
     Duration = 4,
 })
