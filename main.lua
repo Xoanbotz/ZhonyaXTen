@@ -1,12 +1,12 @@
--- ============================================
--- CHECKPOINT EXPLOIT - ZhonyaLib UI
--- By: Conqueror
--- ============================================
+--[[
+=========================================================
+  CP EXPLOIT - Rayfield UI
+  Rewritten from ZhonyaLib version
+=========================================================
+]]
 
-if not ZhonyaLib then
-    warn("[!] ZhonyaLib not loaded! Load library first.")
-    return
-end
+-- Load Rayfield
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
@@ -39,14 +39,12 @@ local function scanCPs()
         end
     end
     
-    -- Direct Workspace.CP1, CP2, dst
     for _, obj in ipairs(Workspace:GetChildren()) do
         if obj.Name:match("^CP%d+$") then
             add(obj.Name, obj)
         end
     end
     
-    -- Folder Workspace.Checkpoints.CP0, CP1, dst
     local folder = Workspace:FindFirstChild("Checkpoints")
     if folder then
         for _, obj in ipairs(folder:GetChildren()) do
@@ -54,7 +52,6 @@ local function scanCPs()
         end
     end
     
-    -- Sort by nomor
     table.sort(list, function(a, b)
         local an = tonumber(a.name:match("(%d+)")) or 0
         local bn = tonumber(b.name:match("(%d+)")) or 0
@@ -74,58 +71,70 @@ local function tpTo(part)
     return true
 end
 
--- ============ CREATE UI ============
-local Win = ZhonyaLib:CreateWindow({
-    Title = "CP Exploit",
-    OnUnload = function()
-        if noclipConn then pcall(function() noclipConn:Disconnect() end) end
-        if autoJumpConn then pcall(function() autoJumpConn:Disconnect() end) end
-    end
+-- ============ CREATE WINDOW ============
+local Window = Rayfield:CreateWindow({
+    Name = "CP Exploit",
+    LoadingTitle = "Loading CP Exploit",
+    LoadingSubtitle = "by Conqueror",
+    ConfigurationSaving = { Enabled = false },
+    KeySystem = false,
 })
 
 -- ============ TAB 1: TELEPORT ============
-local TabTP = Win:CreateTab("Teleport")
+local TabTP = Window:CreateTab("Teleport", 4483362458)
 TabTP:CreateSection("Checkpoints Terdeteksi")
-TabTP:CreateLabel("Klik CP untuk teleport ke titik itu")
+TabTP:CreateLabel("Klik CP untuk teleport")
 
 local cps = scanCPs()
 
 if #cps == 0 then
-    TabTP:CreateLabel("⚠ Tidak ada CP ditemukan.")
+    TabTP:CreateLabel("Tidak ada CP ditemukan")
     TabTP:CreateLabel("Pastikan CP ada di Workspace atau Workspace.Checkpoints")
 else
     for _, cp in ipairs(cps) do
         TabTP:CreateButton({
-            Name = "→ " .. cp.name,
+            Name = "-> " .. cp.name,
             Callback = function()
                 if tpTo(cp.part) then
-                    ZhonyaLib:Notify({Content = "TP: " .. cp.name})
+                    Rayfield:Notify({
+                        Title = "Teleport",
+                        Content = "TP: " .. cp.name,
+                        Duration = 3,
+                    })
                 end
-            end
+            end,
         })
     end
 end
 
 -- ============ TAB 2: MOVEMENT ============
-local TabMove = Win:CreateTab("Movement")
+local TabMove = Window:CreateTab("Movement", 4483362458)
 
 TabMove:CreateSection("Kecepatan")
 TabMove:CreateSlider({
     Name = "Walk Speed",
-    Min = 16, Max = 500, Default = 50, Increment = 1,
+    Range = {16, 500},
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 50,
+    Flag = "WalkSpeed",
     Callback = function(v)
         local h = getHumanoid()
         if h then h.WalkSpeed = v end
-    end
+    end,
 })
 
 TabMove:CreateSlider({
     Name = "Jump Power",
-    Min = 50, Max = 500, Default = 100, Increment = 1,
+    Range = {50, 500},
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 100,
+    Flag = "JumpPower",
     Callback = function(v)
         local h = getHumanoid()
         if h then h.JumpPower = v end
-    end
+    end,
 })
 
 TabMove:CreateSection("Exploits")
@@ -133,6 +142,7 @@ TabMove:CreateSection("Exploits")
 TabMove:CreateToggle({
     Name = "Auto Jump",
     CurrentValue = false,
+    Flag = "AutoJump",
     Callback = function(v)
         if v then
             if autoJumpConn then autoJumpConn:Disconnect() end
@@ -145,12 +155,13 @@ TabMove:CreateToggle({
         else
             if autoJumpConn then autoJumpConn:Disconnect(); autoJumpConn = nil end
         end
-    end
+    end,
 })
 
 TabMove:CreateToggle({
-    Name = "Noclip (Tembus Tembok)",
+    Name = "Noclip",
     CurrentValue = false,
+    Flag = "Noclip",
     Callback = function(v)
         if v then
             if noclipConn then noclipConn:Disconnect() end
@@ -165,66 +176,94 @@ TabMove:CreateToggle({
         else
             if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
         end
-    end
+    end,
 })
 
--- ============ TAB 3: MANUAL TP ============
-local TabManual = Win:CreateTab("Manual")
+-- ============ TAB 3: MANUAL ============
+local TabManual = Window:CreateTab("Manual", 4483362458)
 TabManual:CreateSection("Koordinat Manual")
 
-local xI = TabManual:CreateInput({Name = "X", Placeholder = "0"})
-local yI = TabManual:CreateInput({Name = "Y", Placeholder = "100"})
-local zI = TabManual:CreateInput({Name = "Z", Placeholder = "0"})
+local xInput = TabManual:CreateInput({
+    Name = "X",
+    PlaceholderText = "0",
+    RemoveTextAfterFocusLost = false,
+    Flag = "InputX",
+    Callback = function() end,
+})
+
+local yInput = TabManual:CreateInput({
+    Name = "Y",
+    PlaceholderText = "100",
+    RemoveTextAfterFocusLost = false,
+    Flag = "InputY",
+    Callback = function() end,
+})
+
+local zInput = TabManual:CreateInput({
+    Name = "Z",
+    PlaceholderText = "0",
+    RemoveTextAfterFocusLost = false,
+    Flag = "InputZ",
+    Callback = function() end,
+})
 
 TabManual:CreateButton({
     Name = "Teleport ke X, Y, Z",
     Callback = function()
         local hrp = getHRP()
         if not hrp then return end
-        local x = tonumber(xI:Get()) or 0
-        local y = tonumber(yI:Get()) or 100
-        local z = tonumber(zI:Get()) or 0
+        local x = tonumber(xInput) or 0
+        local y = tonumber(yInput) or 100
+        local z = tonumber(zInput) or 0
         hrp.CFrame = CFrame.new(x, y, z)
-        ZhonyaLib:Notify({Content = string.format("TP ke (%.0f, %.0f, %.0f)", x, y, z)})
-    end
+        Rayfield:Notify({
+            Title = "Teleport",
+            Content = string.format("TP ke (%.0f, %.0f, %.0f)", x, y, z),
+            Duration = 3,
+        })
+    end,
 })
 
-TabManual:CreateButtonSecondary({
+TabManual:CreateButton({
     Name = "Simpan Posisi Sekarang",
     Callback = function()
         local hrp = getHRP()
         if not hrp then return end
-        xI:Set(tostring(math.floor(hrp.Position.X)))
-        yI:Set(tostring(math.floor(hrp.Position.Y)))
-        zI:Set(tostring(math.floor(hrp.Position.Z)))
-        ZhonyaLib:Notify({Content = "Posisi disimpan!"})
-    end
+        local p = hrp.Position
+        Rayfield:Notify({
+            Title = "Posisi Disimpan",
+            Content = string.format("X: %.0f, Y: %.0f, Z: %.0f", p.X, p.Y, p.Z),
+            Duration = 3,
+        })
+    end,
 })
 
 -- ============ TAB 4: INFO ============
-local TabInfo = Win:CreateTab("Info")
+local TabInfo = Window:CreateTab("Info", 4483362458)
 TabInfo:CreateSection("Player")
 
 TabInfo:CreateLabel("Place ID: " .. tostring(game.PlaceId))
 TabInfo:CreateLabel("Total CP terdeteksi: " .. #cps)
 TabInfo:CreateLabel("Character: " .. (LP.Character and LP.Character.Name or "Not loaded"))
 
-TabInfo:CreateButtonSecondary({
+TabInfo:CreateButton({
     Name = "Tampilkan Posisi",
     Callback = function()
         local hrp = getHRP()
         if hrp then
             local p = hrp.Position
-            ZhonyaLib:Notify({
-                Content = string.format("Pos: %.1f, %.1f, %.1f", p.X, p.Y, p.Z),
-                Duration = 5
+            Rayfield:Notify({
+                Title = "Posisi",
+                Content = string.format("%.1f, %.1f, %.1f", p.X, p.Y, p.Z),
+                Duration = 5,
             })
         end
-    end
+    end,
 })
 
 -- ============ NOTIF ============
-ZhonyaLib:Notify({
-    Content = "✅ CP Exploit loaded! " .. #cps .. " CP ditemukan",
-    Duration = 4
+Rayfield:Notify({
+    Title = "CP Exploit",
+    Content = "Loaded! " .. #cps .. " CP ditemukan",
+    Duration = 4,
 })
